@@ -43,6 +43,7 @@ module.exports = {
           this.import(`${vendorPath}/${locale}`);
         });
       }
+    }
 
     this._super.included.apply(this, arguments);
   },
