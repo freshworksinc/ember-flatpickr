@@ -6,6 +6,7 @@ import { assert } from '@ember/debug';
 import { scheduleOnce, later } from '@ember/runloop';
 import { getOwner } from '@ember/application';
 import { Instance as FlatpickrInstance } from 'flatpickr/dist/types/instance';
+import { SELECTORS, ARIA, KEYS } from './ember-flatpickr-constants';
 import { BaseOptions as FlatpickrOptions } from 'flatpickr/dist/types/options';
 
 interface EmberFlatpickrArgs extends FlatpickrOptions {
@@ -184,7 +185,6 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
       // Use microtask to minimize delay while avoiding re-entrancy
       Promise.resolve().then(() => {
         if (Array.isArray(onChange)) {
-          console.log("inside if")
           onChange.forEach((fn) => fn(selectedDates, dateStr, instance));
         } else {
           onChange(selectedDates, dateStr, instance);
@@ -347,16 +347,27 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
 
   private _getEls(container: HTMLElement) {
     return {
-      prev: container.querySelector('.flatpickr-prev-month') as HTMLElement | null,
-      next: container.querySelector('.flatpickr-next-month') as HTMLElement | null,
-      monthSelect: container.querySelector('.flatpickr-monthDropdown-months') as HTMLElement | null,
-      curMonth: container.querySelector('.flatpickr-current-month .cur-month') as HTMLElement | null
-                || container.querySelector('.flatpickr-current-month') as HTMLElement | null,
-      yearInput: container.querySelector('.flatpickr-current-month .cur-year') as HTMLInputElement | null
-                 || container.querySelector('.cur-year') as HTMLInputElement | null,
-      daysContainer: container.querySelector('.flatpickr-days') as HTMLElement | null,
-      focusedDay: container.querySelector('.flatpickr-day[tabindex="0"]') as HTMLElement | null
+      prev: container.querySelector(SELECTORS.prevButton) as HTMLElement | null,
+      next: container.querySelector(SELECTORS.nextButton) as HTMLElement | null,
+      monthSelect: container.querySelector(SELECTORS.monthSelect) as HTMLElement | null,
+      curMonth:
+        (container.querySelector(SELECTORS.currentMonth) as HTMLElement | null) ||
+        (container.querySelector(SELECTORS.currentMonthFallback) as HTMLElement | null),
+      yearInput:
+        (container.querySelector(SELECTORS.yearInput) as HTMLInputElement | null) ||
+        (container.querySelector(SELECTORS.yearInputFallback) as HTMLInputElement | null),
+      daysContainer: container.querySelector(SELECTORS.daysContainer) as HTMLElement | null,
+      focusedDay: container.querySelector(SELECTORS.dayTabbable) as HTMLElement | null
     };
+  }
+
+  // Set multiple attributes at once. Ignores undefined values.
+  private _setAttributes(el: HTMLElement, attrs: Record<string, string | undefined>): void {
+    for (const [key, value] of Object.entries(attrs)) {
+      if (value !== undefined) {
+        el.setAttribute(key, value);
+      }
+    }
   }
 
   private _bindOnce(el: HTMLElement | null, refKey: keyof typeof this.refs, handlerKey: keyof typeof this.handlers, fn: (e: KeyboardEvent) => void) {
@@ -370,9 +381,6 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
     if (!this.handlers[handlerKey]) {
       this.handlers[handlerKey] = fn;
       el.addEventListener('keydown', fn);
-    } else if (this.handlers[handlerKey] && this.refs[refKey] === el) {
-      // already bound to the same element: ensure it's present
-      // nothing to do
     } else {
       // replace binding
       if (this.handlers[handlerKey]) el.addEventListener('keydown', this.handlers[handlerKey]!);
@@ -384,10 +392,11 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
 
     const calendar = instance?.calendarContainer as HTMLElement | undefined;
     if (calendar) {
-      calendar.setAttribute('role', 'dialog');
-      calendar.setAttribute('aria-modal', 'true');
-      calendar.setAttribute('aria-label', 'Select date from the calendar');
-      if (!calendar.hasAttribute('tabindex')) calendar.setAttribute('tabindex', '0');
+      this._setAttributes(calendar, {
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': ARIA.calendarLabel
+      });
     }
 
     this._setupHeaderA11y(instance);
@@ -415,14 +424,14 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
 
     later(this, () => {
       // choose first enabled in-month day
-      const enabledSel = '.flatpickr-day:not(.prevMonthDay):not(.nextMonthDay):not(.flatpickr-disabled):not([aria-disabled=\"true\"])';
-      const selected = container.querySelector('.flatpickr-day.selected:not(.flatpickr-disabled):not([aria-disabled=\"true\"])') as HTMLElement | null;
-      const today = container.querySelector('.flatpickr-day.today:not(.flatpickr-disabled):not([aria-disabled=\"true\"])') as HTMLElement | null;
+      const enabledSel = SELECTORS.dayEnabledInMonth;
+      const selected = container.querySelector(`${SELECTORS.daySelected}:not(.flatpickr-disabled):not([aria-disabled=\"true\"])`) as HTMLElement | null;
+      const today = container.querySelector(`${SELECTORS.dayToday}:not(.flatpickr-disabled):not([aria-disabled=\"true\"])`) as HTMLElement | null;
       const firstEnabled = container.querySelector(enabledSel) as HTMLElement | null;
       const candidate = selected || today || firstEnabled;
 
       if (candidate) {
-        container.querySelectorAll('.flatpickr-day[tabindex="0"]').forEach((el) => (el as HTMLElement).setAttribute('tabindex', '-1'));
+        container.querySelectorAll(SELECTORS.dayTabbable).forEach((el) => (el as HTMLElement).setAttribute('tabindex', '-1'));
         candidate.setAttribute('tabindex', '0');
         candidate.focus({ preventScroll: true });
       } else {
@@ -438,11 +447,13 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
 
     const calendarId = this._ensureCalendarId(instance);
 
-    visibleInput.setAttribute('role', 'combobox');
-    visibleInput.setAttribute('aria-haspopup', 'dialog');
-    visibleInput.setAttribute('aria-expanded', 'false');
-    if (calendarId) visibleInput.setAttribute('aria-controls', calendarId);
-    visibleInput.setAttribute('aria-disabled', String(!!this.args.disabled));
+    this._setAttributes(visibleInput, {
+      role: 'combobox',
+      'aria-haspopup': 'dialog',
+      'aria-expanded': 'false',
+      'aria-controls': calendarId || undefined,
+      'aria-disabled': String(!!this.args.disabled)
+    });
   }
 
   private _setupHeaderA11y(instance: FlatpickrInstance): void {
@@ -455,7 +466,7 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
    *  Prev / Next Month , month/Year selection Buttons
    * ------------------------ */
   const makeNavKeyHandler = (delta: number) => (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
+    if (e.key === KEYS.Enter || e.key === KEYS.Space) {
       e.preventDefault();
       (instance as any).changeMonth?.(delta);
       later(this, () => this._focusInitialDay(instance), 50);
@@ -463,23 +474,29 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
   };
 
   if (prev) {
-    prev.setAttribute("role", "button");
-    prev.setAttribute("tabindex", "0");
-    prev.setAttribute("aria-label", "Previous month");
+    this._setAttributes(prev, {
+      role: 'button',
+      tabindex: '0',
+      'aria-label': ARIA.prevMonthLabel
+    });
     this._bindOnce(prev, "prev", "prevKey", makeNavKeyHandler(-1));
   }
 
   if (next) {
-    next.setAttribute("role", "button");
-    next.setAttribute("tabindex", "0");
-    next.setAttribute("aria-label", "Next month");
+    this._setAttributes(next, {
+      role: 'button',
+      tabindex: '0',
+      'aria-label': ARIA.nextMonthLabel
+    });
     this._bindOnce(next, "next", "nextKey", makeNavKeyHandler(1));
   }
 
  
   if (monthSelect) {
-    monthSelect.setAttribute("aria-label", "Select month");
-    monthSelect.setAttribute("tabindex", "0");
+    this._setAttributes(monthSelect, {
+      'aria-label': ARIA.selectMonthLabel,
+      tabindex: '0'
+    });
 
     // No custom keyboard needed for native <select>
     this._bindOnce(monthSelect, "month", "monthKey", () => {});
@@ -487,24 +504,24 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
 
 
   if (yearInput) {
-    yearInput.setAttribute("aria-label", "Enter year");
-    yearInput.setAttribute("inputmode", "numeric");
-    yearInput.setAttribute("tabindex", "0");
+    this._setAttributes(yearInput, {
+      'aria-label': ARIA.enterYearLabel,
+      inputmode: 'numeric',
+      tabindex: '0'
+    });
 
     const yearKeyHandler = (e: KeyboardEvent) => {
       const key = e.key;
 
       // Only Arrow Up / Down change year
-      if (key !== "ArrowUp" && key !== "ArrowDown") return;
+      if (key !== KEYS.ArrowUp && key !== KEYS.ArrowDown) return;
 
       e.preventDefault();
 
-      key === 'ArrowDown' ? -1 : 1;    
+      key === KEYS.ArrowDown ? -1 : 1;    
      const current = parseInt(yearInput.value, 10) ||(instance as any).currentYear || new Date().getFullYear();
 
       yearInput.value = String(current + key);
-
-      yearInput.dispatchEvent(new Event("change", { bubbles: true }));
 
       later(this, () => this._focusInitialDay(instance), 50);
     };
@@ -529,9 +546,7 @@ private _attachFocusCycle(instance: FlatpickrInstance): void {
 
   this.handlers.calendarKeydown = (e: KeyboardEvent) => {
     // Record keyboard selection to debounce reopen in input handler
-    // if ((e.key === 'Enter' || e.key === ' ') && (e.target as HTMLElement)?.classList?.contains('flatpickr-day')) {
-    //   this.lastCloseAt = Date.now();
-    // }
+
     if (e.key !== "Tab") return;
     e.preventDefault();
 
