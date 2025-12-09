@@ -175,7 +175,6 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
 
     const composedOnMonthYearChange = function (_selectedDates: Date[], _dateStr: string, instance: FlatpickrInstance) {
       self._setupHeaderA11y(instance);
-      later(self, () => self._focusInitialDay(instance), 50);
     };
 
     // Defer consumer onChange to the next tick so flatpickr can finish its internal handlers
@@ -360,6 +359,27 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
     };
   }
 
+  private _isDisabledDay(el: Element | null): boolean {
+    if (!el) return true;
+    const cls = (el as HTMLElement).classList;
+    return (
+      cls.contains('flatpickr-disabled') ||
+      cls.contains('prevMonthDay') ||
+      cls.contains('nextMonthDay') ||
+      (el as HTMLElement).getAttribute('aria-disabled') === 'true'
+    );
+  }
+
+  private _pickEnabledDay(container: HTMLElement): HTMLElement | null {
+    const selected = container.querySelector(
+      `${SELECTORS.daySelected}:not(.flatpickr-disabled):not([aria-disabled="true"])`
+    ) as HTMLElement | null;
+    const today = container.querySelector(
+      `${SELECTORS.dayToday}:not(.flatpickr-disabled):not([aria-disabled="true"])`
+    ) as HTMLElement | null;
+    const firstEnabled = container.querySelector(SELECTORS.dayEnabledInMonth) as HTMLElement | null;
+    return selected || today || firstEnabled;
+  }
   // Set multiple attributes at once. Ignores undefined values.
   private _setAttributes(el: HTMLElement, attrs: Record<string, string | undefined>): void {
     for (const [key, value] of Object.entries(attrs)) {
@@ -568,9 +588,18 @@ private _attachFocusCycle(instance: FlatpickrInstance): void {
 
     // Maintain correct tabindex for days
     if (target.classList.contains("flatpickr-day")) {
-      container.querySelectorAll(".flatpickr-day[tabindex='0']")
-        .forEach((d) => d.setAttribute("tabindex", "-1"));
-      target.setAttribute("tabindex", "0");
+      // If computed day is disabled (e.g., prevMonthDay/nextMonthDay), pick a safe enabled day
+      let day = target as HTMLElement;
+      if (this._isDisabledDay(day)) {
+        const fallback = this._pickEnabledDay(container);
+        if (fallback) {
+          day = fallback;
+        }
+      }
+      container.querySelectorAll(".flatpickr-day[tabindex='0']").forEach((d) => d.setAttribute("tabindex", "-1"));
+      day.setAttribute("tabindex", "0");
+      day.focus({ preventScroll: true });
+      return;
     }
 
     target.focus({ preventScroll: true });
