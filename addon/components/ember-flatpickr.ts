@@ -91,7 +91,6 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
     month: null as HTMLElement | null,
     year: null as HTMLElement | null
   };
- // private lastCloseAt: number | null = null;
 
   @action
   onInsert(element: HTMLInputElement): void {
@@ -395,7 +394,8 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
       this._setAttributes(calendar, {
         role: 'dialog',
         'aria-modal': 'true',
-        'aria-label': ARIA.calendarLabel
+        'aria-label': ARIA.calendarLabel,
+        'aria-live': 'off'
       });
     }
 
