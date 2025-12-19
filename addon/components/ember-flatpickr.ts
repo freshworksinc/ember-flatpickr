@@ -74,14 +74,16 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
   private inputEl?: HTMLInputElement;
   private calendarEl?: HTMLElement;
 
-  // stores for cleanup and rebinds
-  private handlers = {
-    inputKeydown: null as ((e: KeyboardEvent) => void) | null,
-    calendarKeydown: null as ((e: KeyboardEvent) => void) | null,
-    prevKey: null as ((e: KeyboardEvent) => void) | null,
-    nextKey: null as ((e: KeyboardEvent) => void) | null,
-    monthKey: null as ((e: KeyboardEvent) => void) | null,
-    yearKey: null as ((e: KeyboardEvent) => void) | null
+  // stores for cleanup and rebinds (EventListener to avoid type intersections)
+  private handlers: Record<string, EventListener | null> = {
+    inputKeydown: null,
+    calendarKeydown: null,
+    prevKey: null,
+    nextKey: null,
+    prevClick: null,
+    nextClick: null,
+    monthKey: null,
+    yearKey: null
   };
 
   // keep references to header controls so we can remove listeners when they are replaced
@@ -117,6 +119,12 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
     }
     if (this.calendarEl && this.handlers.calendarKeydown) {
       this.calendarEl.removeEventListener('keydown', this.handlers.calendarKeydown, true);
+    }
+    if (this.refs.prev && this.handlers.prevClick) {
+      this.refs.prev.removeEventListener('click', this.handlers.prevClick);
+    }
+    if (this.refs.next && this.handlers.nextClick) {
+      this.refs.next.removeEventListener('click', this.handlers.nextClick);
     }
 
     this.flatpickrRef?.destroy();
@@ -389,7 +397,7 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
     }
   }
 
-  private _bindOnce(el: HTMLElement | null, refKey: keyof typeof this.refs, handlerKey: keyof typeof this.handlers, fn: (e: KeyboardEvent) => void) {
+  private _bindOnce(el: HTMLElement | null, refKey: keyof typeof this.refs, handlerKey: keyof typeof this.handlers, fn: EventListener) {
     if (!el) return;
     // remove old listener if element changed
     if (this.refs[refKey] && this.refs[refKey] !== el && this.handlers[handlerKey]) {
@@ -413,7 +421,6 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
     if (calendar) {
       this._setAttributes(calendar, {
         role: 'dialog',
-        'aria-modal': 'true',
         'aria-label': ARIA.calendarLabel,
         'aria-live': 'off'
       });
@@ -492,6 +499,9 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
       later(this, () => this._focusInitialDay(instance), 50);
     }
   };
+  const onNavClick = () => {
+    later(this, () => this._focusInitialDay(instance), 80);
+  };
 
   if (prev) {
     this._setAttributes(prev, {
@@ -500,6 +510,10 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
       'aria-label': ARIA.prevMonthLabel
     });
     this._bindOnce(prev, "prev", "prevKey", makeNavKeyHandler(-1));
+    if (!this.handlers.prevClick) {
+      this.handlers.prevClick = onNavClick as (e: MouseEvent) => void;
+      prev.addEventListener('click', this.handlers.prevClick);
+    }
   }
 
   if (next) {
@@ -509,6 +523,10 @@ export default class EmberFlatpickr extends Component<EmberFlatpickrArgs> {
       'aria-label': ARIA.nextMonthLabel
     });
     this._bindOnce(next, "next", "nextKey", makeNavKeyHandler(1));
+    if (!this.handlers.nextClick) {
+      this.handlers.nextClick = onNavClick as (e: MouseEvent) => void;
+      next.addEventListener('click', this.handlers.nextClick);
+    }
   }
 
  
@@ -596,9 +614,17 @@ private _attachFocusCycle(instance: FlatpickrInstance): void {
           day = fallback;
         }
       }
-      container.querySelectorAll(".flatpickr-day[tabindex='0']").forEach((d) => d.setAttribute("tabindex", "-1"));
-      day.setAttribute("tabindex", "0");
-      day.focus({ preventScroll: true });
+
+      this._focusInitialDay(instance);
+
+      requestAnimationFrame(() => {
+        const activeDay =
+          container.querySelector(".flatpickr-day[tabindex='0']") as HTMLElement | null;
+
+        if (activeDay) {
+          activeDay.focus({ preventScroll: true });
+        }
+      });
       return;
     }
 
